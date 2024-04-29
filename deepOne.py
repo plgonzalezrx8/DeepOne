@@ -3,94 +3,93 @@ import re
 import math
 import argparse
 import ipaddress
-
 from pathlib import Path
 from collections import deque
+import logging
 
-
-parser = argparse.ArgumentParser()
-parser.add_argument('-i', '--input', action='store', dest='inputFileVar', required=True, help='Path to input file')
-parser.add_argument('-e', '--exclude', action='store', dest='excludeFileVar', help='Path to exclude file')
-parser.add_argument('-o', '--output', action='store', dest='outputFileVar', default=os.getcwd() + "/output.txt", help='Output file')
-parser.add_argument('-s', '--split', action='store', dest='splitCount', type=int, default=1, help='Number of files to split results into')
-args = parser.parse_args()
-
-args.outputFileVar = Path(args.outputFileVar)
-
-regexPatterns = {}
-regexPatterns['cidr'] = r'^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$'
-regexPatterns['lastOctet'] = r'^(\d{1,3}\.){3}\d{1,3}-\d{1,3}$'
-regexPatterns['allOctets'] = r'^(\d{1,3}\.){3}(\d{1,3})-(\d{1,3}\.){3}\d{1,3}$'
-regexPatterns['single'] = r'^(\d{1,3}\.){3}(\d{1,3})$'
-
-
-outputFile = open(args.outputFileVar, 'a')
-inputFile = open(args.inputFileVar, 'r')
-if args.excludeFileVar: excludeFile = open(args.excludeFileVar, 'r')
-
+# Pre-compile regex patterns
+regex_patterns = {
+    'cidr': re.compile(r'^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$'),
+    'lastOctet': re.compile(r'^(\d{1,3}\.){3}\d{1,3}-\d{1,3}$'),
+    'allOctets': re.compile(r'^(\d{1,3}\.){3}(\d{1,3})-(\d{1,3}\.){3}\d{1,3}$'),
+    'single': re.compile(r'^(\d{1,3}\.){3}(\d{1,3})$')
+}
 
 def expand(ipRange):
     scope = []
-    if re.search(regexPatterns['cidr'], ipRange):
+    if regex_patterns['cidr'].search(ipRange):
         net = ipaddress.ip_network(ipRange)
         for adder in net:
             scope.append(str(ipaddress.IPv4Address(adder)))
-    elif re.search(regexPatterns['lastOctet'], ipRange):
+    elif regex_patterns['lastOctet'].search(ipRange):
         adder = ipRange.split('.')
         startEnd = adder[3].split('-')
         start = int(startEnd[0])
         end = int(startEnd[1])
         for i in range(start, end + 1):
             scope.append(adder[0] + '.' + adder[1] + '.' + adder[2] + '.' + str(i))
-    elif re.search(regexPatterns['allOctets'], ipRange):
+    elif regex_patterns['allOctets'].search(ipRange):
         startEnd = ipRange.split('-')
         start_ip = ipaddress.IPv4Address(startEnd[0])
         end_ip = ipaddress.IPv4Address(startEnd[1])
         for ip_int in range(int(start_ip), int(end_ip) + 1):
             scope.append(str(ipaddress.IPv4Address(ip_int)))
-    elif re.search(regexPatterns['single'], ipRange):
+    elif regex_patterns['single'].search(ipRange):
         scope.append(ipRange)
     else:
-        print("Can not parse: " + ipRange)
+        logging.warning("Cannot parse: " + ipRange)
         return []
     return scope
 
-
-excludeList = []
-try:
-    if excludeFile:
-        excludeList = []
-        for case in excludeFile:
+def process_file(input_file_path, exclude_set, output_file_path):
+    with open(input_file_path, 'r') as inputFile, open(output_file_path, 'a') as outputFile:
+        for case in inputFile:
             case = case.rstrip("\n")
-            for i in expand(case):
-                excludeList.append(i)
+            for ip in expand(case):
+                if ip not in exclude_set:
+                    outputFile.write(ip + "\n")
 
-        excludeFile.close()
-except:
-    print("Not using an exclude file")
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--input', required=True, help='Path to input file')
+    parser.add_argument('-e', '--exclude', help='Path to exclude file')
+    parser.add_argument('-o', '--output', default=os.getcwd() + "/output.txt", help='Output file')
+    parser.add_argument('-s', '--split', type=int, default=1, help='Number of files to split results into')
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
+
+    # Convert exclude list to a set for efficient lookup
+    exclude_set = set()
+    if args.exclude:
+        try:
+            with open(args.exclude, 'r') as excludeFile:
+                for line in excludeFile:
+                    line = line.strip()
+                    exclude_set.update(expand(line))
+        except IOError:
+            logging.error("Failed to read exclude file")
 
 
-for case in inputFile:
-    case = case.rstrip("\n")
-    for i in expand(case):
-        if i not in excludeList:
-           print(i, file=outputFile)
-    
+    # Process input file
+    process_file(args.input, exclude_set, Path(args.output))
 
-outputFile.close()
-inputFile.close()
+    # File splitting logic
+    if args.split > 1:
+        allIps = deque([])
+        with open(args.output, 'r') as fullList:
+            for line in fullList:
+                allIps.append(line)
+        numPerFile = math.ceil(len(allIps)/args.split)
+        print(len(allIps))
+        print(numPerFile)
+        for fileNum in range(args.split):
+            with open(Path(str(args.output) + str(fileNum)), 'a') as outputFile:
+                for _ in range(numPerFile):
+                    if allIps:
+                        print(allIps.popleft().rstrip("\n"), file=outputFile)
+                    else:
+                        break
 
-
-if args.splitCount > 1:
-    allIps = deque([])
-    with open(args.outputFileVar, 'r') as fullList:
-        for line in fullList:
-            allIps.append(line)
-    numPerFile = math.ceil(len(allIps)/args.splitCount)
-    print(len(allIps))
-    print(numPerFile)
-    for fileNum in range(0,args.splitCount):
-        with open(Path(str(args.outputFileVar) + str(fileNum)), 'a') as outputFile:
-            for count in range(0,numPerFile):
-                if len(allIps) > 0: print(allIps.popleft().rstrip("\n"), file=outputFile)
-                else: break
+if __name__ == "__main__":
+    main()
