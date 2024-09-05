@@ -82,6 +82,39 @@ The exclude file should contain IP addresses or ranges to be excluded from the f
 3. The script writes the resulting IP addresses to the output file.
 4. If splitting is requested, it divides the output into the specified number of files.
 
+## Running Tests
+
+DeepOne uses pytest for testing. To run the tests:
+
+1. Ensure you have pytest installed:
+
+   ```
+   pip install pytest
+   ```
+
+2. Run the tests:
+
+   ```
+   pytest deepOneTest.py
+   ```
+
+The test suite covers various aspects of the DeepOne functionality, including:
+
+- CIDR notation expansion
+- Last octet range expansion
+- Full IP range expansion
+- Single IP handling
+- Invalid IP handling
+- File processing
+
+For more verbose output, you can use:
+
+```
+pytest -v deepOneTest.py
+```
+
+This will show detailed information about each test as it runs.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
