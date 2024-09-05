@@ -115,7 +115,7 @@ pytest -v deepOneTest.py
 
 This will show detailed information about each test as it runs.
 
-## Contributing
+## Contributing 
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
